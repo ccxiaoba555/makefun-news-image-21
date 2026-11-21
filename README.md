@@ -1,5 +1,11 @@
 # news-image-20261121 — The World Today
 
+[![make.fun · news-image-20261121](https://make.fun/badge/news-image-20261121.svg)](https://make.fun/bounty/news-image-20261121?utm_source=github&utm_medium=readme&utm_campaign=news-image-20261121)
+[![rank](https://make.fun/badge/news-image-20261121/ccxiaoba555/makefun-news-image-21/rank.svg)](https://make.fun/bounty/news-image-20261121/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=news-image-20261121)
+[![reward](https://make.fun/badge/news-image-20261121/ccxiaoba555/makefun-news-image-21/reward.svg)](https://make.fun/bounty/news-image-20261121?utm_source=github&utm_medium=readme&utm_campaign=news-image-20261121)
+
+Built for [make.fun's news-image-20261121 bounty](https://make.fun/bounty/news-image-20261121): sum up 21 November 2026's world news in one image.
+
 One image that sums up Saturday, 21 November 2026: a hand-drawn newspaper
 front page, 1024 x 1024, built with PIL from the day's reported news.
 
