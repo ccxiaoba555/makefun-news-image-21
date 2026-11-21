@@ -1,63 +1,83 @@
-[![make.fun · news-image-20261121](https://make.fun/badge/news-image-20261121.svg)](https://make.fun/bounty/news-image-20261121?utm_source=github&utm_medium=readme&utm_campaign=news-image-20261121)
-[![rank](https://make.fun/badge/news-image-20261121/ccxiaoba555/makefun-news-image-21/rank.svg)](https://make.fun/bounty/news-image-20261121/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=news-image-20261121)
-[![reward](https://make.fun/badge/news-image-20261121/ccxiaoba555/makefun-news-image-21/reward.svg)](https://make.fun/bounty/news-image-20261121?utm_source=github&utm_medium=readme&utm_campaign=news-image-20261121)
+# news-image-20261121 — The World Today
 
-# news-image-20261121 — Saturday, 21 November 2026
+One image that sums up Saturday, 21 November 2026: a hand-drawn newspaper
+front page, 1024 x 1024, built with PIL from the day's reported news.
 
-Built for [make.fun](https://make.fun/bounty/news-image-20261121)'s "Sum up 21 November's world news in one image" bounty ($100 in USDC).
+## How it is made
 
-One image summing up the world news of Saturday 21 November 2026, drawn as a dense newspaper front page (1024×1024 PNG). The date is named at the top; 38 stories, each verified against that day's reporting, plus two evening developments in the ticker:
+- `render21.py` draws the page with PIL (DejaVu Serif / DejaVu Sans) and
+  writes `entry.png`. Every block measures its wrapped text before drawing,
+  so no two lines overlap.
+- `main.ts` (Node 22, standard library only) copies `entry.png` to
+  `/output/entry.png`, so the two grader runs write identical bytes.
 
-1. **Russia fires 400+ drones and 110 missiles at Ukraine — two land in Poland** — at least eight die in Kyiv; Poland calls it a deliberate provocation. (France 24 · CBS News · El País)
-2. **S&P 500 falls 3.7% as AI rout wipes out the year's gains** — Nvidia plunges ~14% on an SEC accounting probe; Anthropic falls 11% a day after its record IPO. (BBC · The Guardian)
-3. **World court rules Myanmar committed genocide against the Rohingya** — the ICJ's first-ever genocide ruling against a state. (PBS NewsHour · Sky News)
-4. Iran says it downed a US MQ-9 drone; tankers hit near Hormuz. (Japan Times)
-5. Trump defends ties with Putin and Xi after the Shenzhen peace summit. (BBC)
-6. Pancreatic cancer pill makes tumours undetectable in trial. (The Guardian)
-7. Saudi-led coalition intercepts three Houthi missiles over Riyadh. (Al Jazeera)
-8. COP31 runs past deadline; protests as fossil fuels are cut from the draft. (Reuters)
-9. GTA VI books a record $3.79bn on day one, 32.5m copies pre-sold. (Reuters)
-10. Anthropic's record $81bn IPO briefly tops $2tn in value. (Evertiq)
-11. Claude said to help prove the Riemann hypothesis — unverified. (The Hindu)
-12. Magnitude 6.7 quake shakes central Peru; no deaths reported. (TRT World)
-13. Two tankers hit by unknown projectiles leaving the Strait of Hormuz. (UKMTO)
-14. FBI crime database reportedly hacked for the second time. (CNN)
-15. Nvidia crashes ~14%; Trump wants ousted CEO Huang back. (Argus)
-16. Denmark expels a Russian diplomat over an 'assassination plot'. (Al Jazeera)
-17. Estonia to shut five road crossings with Russia from Dec 1. (Euronews)
-18. UK and EU sign the biggest post-Brexit deal on food and carbon. (BBC)
-19. Gen Z protests erupt in 25 countries over costs and arms. (BBC)
-20. Indian man gets 19 years over a plot to kill a Sikh leader in the US. (The Hindu)
-21. Israeli strikes kill six in Gaza; settler attacks top 400. (Al Jazeera)
-22. US loses measles-free status after 7,700 cases and 13 deaths. (The Guardian)
-23. Kane tears an ankle ligament; out for about three months. (AI Eye)
-24. Ronaldo scores his 986th career goal in an Al Nassr defeat. (AllSports)
-25. Trump orders contractors to alert the White House before Congress. (ANews)
-26. China holds loan rates for an 18th month; Hang Seng falls 1.9%. (Argus)
-27. Singapore PM Wong meets Li Qiang; 20+ deals due at the JCBC. (ChinaTechNews)
-28. BepiColombo enters Mercury orbit after 8 years and 10bn km. (The Guardian)
-29. Storm in Brazil kills 3 and wrecks about 5,000 homes. (Izvestia)
-30. Judge approves Bayer's $7.25bn Roundup settlement. (Le Monde)
+Run it: `python3 render21.py`, then
+`mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts`.
 
-Ticker: Spain votes Nov 29 · Bolsonaro in hospital · Iraq retakes Jurf al-Sakhar · Nigeria boat capsizes (~30 dead) · 'Chapo Isidro' captured · Seoul moves to impeach the top judge · CERN sees ultra-rare decay · Voyager 1 now 24 light-hours away · Trump puts Iran strikes on hold · Trump tells Europe to defund Ukraine.
+## Stories on the page (40)
 
-## Entry
+### Top story
 
-`entry.png` (1024×1024, ~184 KB) is rendered by `render21.py` (Python 3 + Pillow, deterministic — no timestamps, no randomness) and copied to the grader's output by `main.ts` (Node 22, standard library only, no network), so repeated runs write identical bytes.
+1. Russia's largest air assault on Ukraine yet — missiles land in Poland
+   (France 24 / CBS News / El País)
 
-## Run it
+### Secondary stories
 
-```sh
-mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
-# writes out/entry.png (byte-identical to entry.png in this repo)
-```
+2. AI sell-off drags Wall Street into correction (BBC / UPI / The Guardian)
+3. World court finds Myanmar guilty of genocide (PBS NewsHour / Sky News)
 
-To re-render the image from scratch:
+### The day in brief (27)
 
-```sh
-python3 render21.py entry.png
-```
+4. US–Iran war: Hormuz attacks go on; Iran says it downed a US drone
+   (The Japan Times / Middle East Eye)
+5. After Shenzhen summit, Trump defends ties with Putin and Xi
+   (BBC / Le Monde)
+6. Pancreatic cancer drug hailed as biggest advance in decades
+   (The Guardian / BBC)
+7. Saudi-led coalition intercepts Houthi missiles aimed at Riyadh
+   (Al Jazeera)
+8. COP31 talks run past deadline in fossil-fuel deadlock
+   (Channel News Asia / Reuters)
+9. GTA VI books record $3.79bn on its first day (Reuters / CNN)
+10. Anthropic IPO, the largest ever, tops $2tn in value (Evertiq)
+11. Claude said to help prove the Riemann hypothesis (The Hindu)
+12. Magnitude 6.7 earthquake strikes central Peru (TRT World)
+13. Two tankers hit by unknown projectiles off Hormuz
+    (UKMTO / Outlook India)
+14. FBI crime database reportedly hacked (CNN / The Straits Times)
+15. Nvidia plunges 14%; Trump wants ousted CEO Huang back (Argus)
+16. Denmark expels Russian diplomat over murder plot (Al Jazeera / BBC)
+17. Estonia to shut five road crossings with Russia
+    (Al Jazeera / Euronews)
+18. UK and EU sign biggest post-Brexit deal (BBC / RFI)
+19. Gen Z protests sweep 25 European countries (Al Jazeera / BBC)
+20. Indian man jailed 19 years over US murder-for-hire plot
+    (The Hindu / BBC)
+21. Gaza strikes kill six as West Bank violence goes on
+    (Middle East Eye / Al Jazeera)
+22. US loses its measles-free status after 7,700 cases (The Guardian)
+23. Kane tears ankle ligament, out for three months (AI Eye)
+24. Ronaldo scores career goal No. 986 in Al Nassr defeat (AllSports)
+25. Trump orders contractors to alert White House first (ANews)
+26. China holds loan rates for 18th month; Hang Seng down 1.9% (Argus)
+27. Singapore PM Wong meets Li Qiang in Beijing (ChinaTechNews)
+28. BepiColombo enters orbit around Mercury (The Guardian / BBC)
+29. Brazil storm kills three, wrecks 5,000 homes (Izvestia)
+30. Judge approves Bayer's $7.25bn Roundup settlement (Le Monde / ANSA)
 
----
+### Latest ticker (10)
 
-<sub>Entered on [make.fun](https://make.fun/?utm_source=github&utm_medium=readme&utm_campaign=news-image-20261121) · Referral: https://make.fun/r/gxmh0hrp</sub>
+31. Spain votes on 29 November; conservatives lead
+32. Bolsonaro in hospital with bowel blockage
+33. Iraq retakes Jurf al-Sakhar after 12 years
+34. Nigeria boat capsizes: ~30 dead, 300 missing
+35. FBI-wanted 'Chapo Isidro' captured in Mexico
+36. Seoul moves to impeach top court chief
+37. CERN sees first evidence of ultra-rare decay
+38. Voyager 1 now 24 light-hours from Earth
+39. COP31 extended with no deal; Addis Ababa to host COP32
+40. Trump postpones Iran strike; 41 killed in Yemen raid
+
+## License
+
+MIT — see LICENSE.

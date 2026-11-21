@@ -1,43 +1,61 @@
 #!/usr/bin/env python3
-"""Render the 21 November 2026 news image: a dense 1024x1024 newspaper
-front page. Masthead + hero + two second stories + 27 dense items with
-sources + an 'ALSO' ticker carrying the last 10 items.
+"""Draw the 21 November 2026 front page: one 1024x1024 PNG.
 
-38 stories researched from that day's reporting (see news-20261121.md),
-plus two evening developments folded into the ticker. Every headline is
-verified against its source; nothing is invented.
-
-Layout is flow-based: each block's height follows its content, so no text
-ever overlaps the line below it.
-
-Usage: render21.py <out.png>
-Deterministic: no timestamps, no randomness, fixed fonts.
+Layout is computed by a small flow engine: every block measures its wrapped
+text first, then draws, then advances the cursor, so no two lines can
+overlap. Headline, deck and grid copy is written fresh for this day.
 """
-import sys
+import hashlib
+import os
+
 from PIL import Image, ImageDraw, ImageFont
 
-W = H = 1024
-PAPER = (246, 241, 231)
-NAVY = (15, 42, 74)
-RED = (178, 34, 34)
+HERE = os.path.dirname(os.path.abspath(__file__))
+OUT = os.path.join(HERE, "entry.png")
+
+W, H = 1024, 1024
+MARGIN = 36
+COLW = W - 2 * MARGIN  # 952
+
+PAPER = (247, 243, 234)
 INK = (24, 24, 24)
-GREY = (90, 86, 78)
-CARD = (255, 255, 255)
+RED = (172, 32, 32)
+NAVY = (16, 36, 64)
+GREY = (112, 108, 100)
+RULE = (186, 180, 168)
+LIGHT = (238, 233, 222)
 
-SERIF_B = "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf"
-SANS_B = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
-SANS = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
-
-
-def font(path, size):
-    return ImageFont.truetype(path, size)
+FONT_DIR = "/usr/share/fonts/truetype/dejavu"
 
 
-def wrap(draw, text, fnt, width):
-    lines, cur = [], ""
-    for word in text.split():
-        trial = f"{cur} {word}".strip()
-        if draw.textlength(trial, font=fnt) <= width:
+def load(name, size):
+    return ImageFont.truetype(os.path.join(FONT_DIR, name), size)
+
+
+F_MAST = load("DejaVuSerif-Bold.ttf", 44)
+F_DATE = load("DejaVuSans-Bold.ttf", 15)
+F_KICK = load("DejaVuSans-Bold.ttf", 14)
+F_HERO = load("DejaVuSerif-Bold.ttf", 30)
+F_DECK = load("DejaVuSans.ttf", 16)
+F_SRC = load("DejaVuSans.ttf", 12)
+F_SUBKICK = load("DejaVuSans-Bold.ttf", 13)
+F_SUBHEAD = load("DejaVuSerif-Bold.ttf", 20)
+F_SUBBODY = load("DejaVuSans.ttf", 13)
+F_SECT = load("DejaVuSans-Bold.ttf", 13)
+F_CELL = load("DejaVuSans-Bold.ttf", 12)
+F_CELLSRC = load("DejaVuSans.ttf", 10)
+F_TICK = load("DejaVuSans.ttf", 13)
+F_TAG = load("DejaVuSans-Bold.ttf", 13)
+
+
+def wrap(draw, text, font, width):
+    """Greedy word wrap; returns a list of lines that fit width."""
+    words = text.split()
+    lines = []
+    cur = ""
+    for word in words:
+        trial = word if not cur else cur + " " + word
+        if draw.textlength(trial, font=font) <= width:
             cur = trial
         else:
             if cur:
@@ -48,188 +66,248 @@ def wrap(draw, text, fnt, width):
     return lines
 
 
-def draw_fitted(draw, xy, text, fnt_path, size, width, fill,
-                leading=1.15, max_lines=None, shrink_to=12, label=""):
-    """Draw wrapped text, shrinking the font until it fits max_lines.
-    Returns the y just below the last line."""
-    x, y = xy
-    sz = size
-    while True:
-        fnt = font(fnt_path, sz)
-        lines = wrap(draw, text, fnt, width)
-        if max_lines is None or len(lines) <= max_lines or sz <= shrink_to:
-            break
-        sz -= 1
-    if sz < size:
-        print(f"  [fit] {label}: shrank {size}->{sz} ({len(lines)} lines)")
-    for line in lines[:max_lines] if max_lines else lines:
-        draw.text((x, y), line, font=fnt, fill=fill)
-        y += int(sz * leading)
+def draw_lines(draw, x, y, lines, font, fill, leading):
+    for line in lines:
+        draw.text((x, y), line, font=font, fill=fill)
+        y += leading
     return y
 
 
-def tag_chip(draw, x, y, label, size=17):
-    f = font(SANS_B, size)
-    w = int(draw.textlength(label, font=f)) + 20
-    h = size + 11
-    draw.rounded_rectangle([x, y, x + w, y + h], radius=5, fill=RED)
-    draw.text((x + 10, y + 4), label, font=f, fill=(255, 255, 255))
-    return w, h
+def centre(draw, y, text, font, fill):
+    w = draw.textlength(text, font=font)
+    draw.text(((W - w) / 2, y), text, font=font, fill=fill)
+    return y + font.size + 4
 
 
-HERO = ("WAR IN UKRAINE · MISSILES LAND IN POLAND",
-        "Russia fires 400+ drones and 110 missiles at Ukraine — two land in Poland",
-        "At least eight die in Kyiv as bridges and rail stations are hit. "
-        "Poland calls it a deliberate provocation.",
-        "France 24 · CBS News · El País")
+def rule(draw, y, weight=1):
+    draw.line([(MARGIN, y), (W - MARGIN, y)], fill=RULE, width=weight)
+    return y + weight + 4
 
-SECOND = [
-    ("MARKETS · AI SELL-OFF",
-     "S&P 500 falls 3.7% as AI rout wipes out the year's gains",
-     "Nvidia plunges ~14% on an SEC accounting probe; Anthropic falls 11% "
-     "a day after its record IPO.",
-     "BBC · The Guardian"),
-    ("JUSTICE · THE HAGUE",
-     "World court rules Myanmar committed genocide against the Rohingya",
-     "The ICJ's first-ever genocide ruling against a state orders returns "
-     "and reparations; Myanmar calls it unfair.",
-     "PBS NewsHour · Sky News"),
+
+# ---------------------------------------------------------------- content
+
+HERO = {
+    "kicker": "TOP STORY  ·  WAR IN EUROPE",
+    "head": "Russia's largest air assault on Ukraine yet - missiles land in Poland",
+    "deck": ("More than 400 drones and 110 missiles strike Ukraine; at least eight "
+             "are killed in Kyiv as bridges and rail stations are hit. Two Russian "
+             "missiles and a suspected drone come down in Poland. Prime Minister "
+             "Tusk calls it a deliberate provocation; NATO calls it a serious "
+             "airspace violation and scrambles jets."),
+    "src": "Sources: France 24  ·  CBS News  ·  El Pais",
+}
+
+SECONDARY = [
+    {
+        "kicker": "MARKETS",
+        "head": "AI sell-off drags Wall Street into correction",
+        "body": ("The S&P 500 falls 3.7% to 6,910.39 and the Dow enters correction; "
+                 "the Nasdaq erases its 2026 gains. Nvidia plunges about 14% as "
+                 "Reuters reports an SEC accounting inquiry, and Anthropic drops "
+                 "11% a day after listing. Gold falls about 4% and bitcoin about 4%."),
+        "src": "Sources: BBC  ·  UPI  ·  The Guardian",
+    },
+    {
+        "kicker": "JUSTICE",
+        "head": "World court finds Myanmar guilty of genocide",
+        "body": ("The International Court of Justice rules Myanmar committed genocide "
+                 "against the Rohingya - the first time the court has held a state "
+                 "responsible. It orders the displaced to be allowed home and "
+                 "compensation to be paid. Myanmar calls the ruling unfair."),
+        "src": "Sources: PBS NewsHour  ·  Sky News",
+    },
 ]
 
-# 27 dense items (research items 4-30): (headline, source)
+# 27 dense briefs: (headline, source). Headlines kept under ~80 chars so
+# each fits two lines in a ~300 px column at 13 px bold.
 DENSE = [
-    ("Iran says it downed a US MQ-9 drone; tankers hit near Hormuz", "Japan Times"),
-    ("Trump defends ties with Putin and Xi after peace summit", "BBC"),
-    ("Pancreatic cancer pill makes tumours undetectable in trial", "The Guardian"),
-    ("Saudi-led coalition intercepts three Houthi missiles over Riyadh", "Al Jazeera"),
-    ("COP31 runs past deadline; protests as fossil fuels cut from draft", "Reuters"),
-    ("GTA VI books record $3.79bn on day one, 32.5m copies pre-sold", "Reuters"),
-    ("Anthropic's record $81bn IPO briefly tops $2tn in value", "Evertiq"),
-    ("Claude said to help prove the Riemann hypothesis — unverified", "The Hindu"),
-    ("Magnitude 6.7 quake shakes central Peru; no deaths reported", "TRT World"),
-    ("Two tankers hit by unknown projectiles leaving the Strait", "UKMTO"),
-    ("FBI crime database reportedly hacked for the second time", "CNN"),
-    ("Nvidia crashes ~14%; Trump wants ousted CEO Huang back", "Argus"),
-    ("Denmark expels Russian diplomat over 'assassination plot'", "Al Jazeera"),
-    ("Estonia to shut five road crossings with Russia from Dec 1", "Euronews"),
-    ("UK and EU sign biggest post-Brexit deal on food and carbon", "BBC"),
-    ("Gen Z protests erupt in 25 countries over costs and arms", "BBC"),
-    ("Indian man gets 19 years over plot to kill Sikh leader in US", "The Hindu"),
-    ("Israeli strikes kill six in Gaza; settler attacks top 400", "Al Jazeera"),
-    ("US loses measles-free status after 7,700 cases, 13 deaths", "The Guardian"),
-    ("Kane tears ankle ligament; out for about three months", "AI Eye"),
-    ("Ronaldo scores his 986th career goal in Al Nassr defeat", "AllSports"),
-    ("Trump orders contractors to alert White House before Congress", "ANews"),
-    ("China holds loan rates for 18th month; Hang Seng falls 1.9%", "Argus"),
-    ("Singapore PM Wong meets Li Qiang; 20+ deals due at JCBC", "ChinaTechNews"),
-    ("BepiColombo enters Mercury orbit after 8 years, 10bn km", "The Guardian"),
-    ("Storm in Brazil kills 3 and wrecks about 5,000 homes", "Izvestia"),
-    ("Judge approves Bayer's $7.25bn Roundup settlement", "Le Monde"),
+    ("US-Iran war: Hormuz attacks go on; Iran says it downed a US drone",
+     "Japan Times  ·  Middle East Eye"),
+    ("After Shenzhen summit, Trump defends ties with Putin and Xi",
+     "BBC  ·  Le Monde"),
+    ("Pancreatic cancer drug hailed as biggest advance in decades",
+     "The Guardian  ·  BBC"),
+    ("Saudi-led coalition intercepts Houthi missiles aimed at Riyadh",
+     "Al Jazeera"),
+    ("COP31 talks run past deadline in fossil-fuel deadlock",
+     "Channel News Asia  ·  Reuters"),
+    ("GTA VI books record $3.79bn on its first day",
+     "Reuters  ·  CNN"),
+    ("Anthropic IPO, the largest ever, tops $2tn in value",
+     "Evertiq"),
+    ("Claude said to help prove the Riemann hypothesis",
+     "The Hindu"),
+    ("Magnitude 6.7 earthquake strikes central Peru",
+     "TRT World"),
+    ("Two tankers hit by unknown projectiles off Hormuz",
+     "UKMTO  ·  Outlook India"),
+    ("FBI crime database reportedly hacked",
+     "CNN  ·  The Straits Times"),
+    ("Nvidia plunges 14%; Trump wants ousted CEO Huang back",
+     "Argus"),
+    ("Denmark expels Russian diplomat over murder plot",
+     "Al Jazeera  ·  BBC"),
+    ("Estonia to shut five road crossings with Russia",
+     "Al Jazeera  ·  Euronews"),
+    ("UK and EU sign biggest post-Brexit deal",
+     "BBC  ·  RFI"),
+    ("Gen Z protests sweep 25 European countries",
+     "Al Jazeera  ·  BBC"),
+    ("Indian man jailed 19 years over US murder-for-hire plot",
+     "The Hindu  ·  BBC"),
+    ("Gaza strikes kill six as West Bank violence goes on",
+     "Middle East Eye  ·  Al Jazeera"),
+    ("US loses its measles-free status after 7,700 cases",
+     "The Guardian"),
+    ("Kane tears ankle ligament, out for three months",
+     "AI Eye"),
+    ("Ronaldo scores career goal No. 986 in Al Nassr defeat",
+     "AllSports"),
+    ("Trump orders contractors to alert White House first",
+     "ANews"),
+    ("China holds loan rates for 18th month; Hang Seng down 1.9%",
+     "Argus"),
+    ("Singapore PM Wong meets Li Qiang in Beijing",
+     "ChinaTechNews"),
+    ("BepiColombo enters orbit around Mercury",
+     "The Guardian  ·  BBC"),
+    ("Brazil storm kills three, wrecks 5,000 homes",
+     "Izvestia"),
+    ("Judge approves Bayer's $7.25bn Roundup settlement",
+     "Le Monde  ·  ANSA"),
 ]
 
-TICKER = ("ALSO: Spain votes Nov 29 as conservatives lead · Bolsonaro in "
-          "hospital · Iraq retakes Jurf al-Sakhar · Nigeria boat capsizes: "
-          "~30 dead · 'Chapo Isidro' captured · Seoul moves to impeach top "
-          "judge · CERN sees ultra-rare decay · Voyager 1: 24 light-hours "
-          "away · Trump puts Iran strikes on hold · Trump tells Europe to "
-          "defund Ukraine")
+TICKER = [
+    "Spain votes on 29 November; conservatives lead",
+    "Bolsonaro in hospital with bowel blockage",
+    "Iraq retakes Jurf al-Sakhar after 12 years",
+    "Nigeria boat capsizes: ~30 dead, 300 missing",
+    "FBI-wanted 'Chapo Isidro' captured in Mexico",
+    "Seoul moves to impeach top court chief",
+    "CERN sees first evidence of ultra-rare decay",
+    "Voyager 1 now 24 light-hours from Earth",
+    "COP31 extended with no deal; Addis Ababa to host COP32",
+    "Trump postpones Iran strike; 41 killed in Yemen raid",
+]
+
+BAND_H = 76
 
 
-def render(out_path):
+def build():
     img = Image.new("RGB", (W, H), PAPER)
     d = ImageDraw.Draw(img)
-    mx = 36
+    y = 20
 
-    # ---- Masthead: 0-132 ----
-    d.rectangle([0, 0, W, 126], fill=NAVY)
-    d.text((mx, 12), "WORLD NEWS  —  IN ONE IMAGE", font=font(SANS_B, 20),
-           fill=(255, 214, 90))
-    d.text((mx, 38), "SATURDAY, 21 NOVEMBER 2026", font=font(SERIF_B, 44),
-           fill=(255, 255, 255))
-    d.text((mx, 94), "The day's news in one image  ·  38 stories, as reported",
-           font=font(SANS, 19), fill=(190, 205, 222))
-    d.rectangle([0, 126, W, 132], fill=RED)
+    # ---- masthead ------------------------------------------------------
+    y = centre(d, y, "THE WORLD TODAY", F_MAST, INK)
+    y = centre(d, y + 2, "SATURDAY, 21 NOVEMBER 2026  ·  WORLD NEWS IN ONE PAGE",
+               F_DATE, INK)
+    y += 6
+    d.line([(MARGIN, y), (W - MARGIN, y)], fill=INK, width=3)
+    y += 6
+    d.line([(MARGIN, y), (W - MARGIN, y)], fill=INK, width=1)
+    y += 12
 
-    # ---- Hero card: 142-338 (flow-laid, card sized to content) ----
-    y = 142
-    tag, head, summ, src = HERO
-    # measure content height first
-    tmp = ImageDraw.Draw(Image.new("RGB", (1, 1)))
-    hh = len(wrap(tmp, head, font(SERIF_B, 31), W - 2 * mx - 52))
-    sh = len(wrap(tmp, summ, font(SANS, 18), W - 2 * mx - 52))
-    card_h = 12 + 28 + 6 + hh * int(31 * 1.12) + 5 + sh * int(18 * 1.25) \
-        + 6 + 17 + 8
-    d.rounded_rectangle([mx, y, W - mx, y + card_h], radius=10, fill=CARD)
-    d.rectangle([mx, y + 12, mx + 8, y + card_h - 12], fill=RED)
-    tag_chip(d, mx + 26, y + 12, tag, size=17)
-    yy = y + 12 + 28 + 6
-    yy = draw_fitted(d, (mx + 26, yy), head, SERIF_B, 31,
-                     W - 2 * mx - 52, INK, leading=1.12, max_lines=2,
-                     label="hero headline")
-    yy = draw_fitted(d, (mx + 26, yy + 5), summ, SANS, 18,
-                     W - 2 * mx - 52, GREY, leading=1.25, max_lines=2,
-                     label="hero summary")
-    d.text((mx + 26, yy + 6), "Sources: " + src, font=font(SANS, 15),
-           fill=GREY)
-    y = y + card_h + 8
+    # ---- hero ----------------------------------------------------------
+    d.text((MARGIN, y), HERO["kicker"], font=F_KICK, fill=RED)
+    y += 20
+    head_lines = wrap(d, HERO["head"], F_HERO, COLW)
+    assert len(head_lines) <= 2, head_lines
+    y = draw_lines(d, MARGIN, y, head_lines, F_HERO, INK, 36)
+    y += 4
+    deck_lines = wrap(d, HERO["deck"], F_DECK, COLW)
+    assert len(deck_lines) <= 4, deck_lines
+    y = draw_lines(d, MARGIN, y, deck_lines, F_DECK, INK, 20)
+    y += 4
+    d.text((MARGIN, y), HERO["src"], font=F_SRC, fill=GREY)
+    y += 18
+    y = rule(d, y, 1)
+    y += 6
 
-    # ---- Second row: two cards, flow-laid ----
-    card_w = (W - 2 * mx - 20) // 2
-    tops = []
-    for i, (tag, head, summ, src) in enumerate(SECOND):
-        x0 = mx + i * (card_w + 20)
-        hh = len(wrap(tmp, head, font(SERIF_B, 23), card_w - 40))
-        sh = len(wrap(tmp, summ, font(SANS, 15), card_w - 40))
-        ch = 10 + 24 + 4 + hh * int(23 * 1.12) + 4 + sh * int(15 * 1.25) \
-            + 5 + 15 + 8
-        tops.append(ch)
-    card_h = max(tops)
-    for i, (tag, head, summ, src) in enumerate(SECOND):
-        x0 = mx + i * (card_w + 20)
-        d.rounded_rectangle([x0, y, x0 + card_w, y + card_h], radius=10,
-                            fill=CARD)
-        tag_chip(d, x0 + 20, y + 10, tag, size=13)
-        yy = y + 10 + 24 + 4
-        yy = draw_fitted(d, (x0 + 20, yy), head, SERIF_B, 23,
-                         card_w - 40, INK, leading=1.12, max_lines=2,
-                         label=f"second-{i} headline")
-        yy = draw_fitted(d, (x0 + 20, yy + 4), summ, SANS, 15,
-                         card_w - 40, GREY, leading=1.25, max_lines=2,
-                         label=f"second-{i} summary")
-        d.text((x0 + 20, yy + 5), "Sources: " + src,
-               font=font(SANS, 13), fill=GREY)
-    y = y + card_h + 8
+    # ---- two secondary stories ----------------------------------------
+    gap = 24
+    col_w = (COLW - gap) // 2
+    sub_tops = []
+    for i, story in enumerate(SECONDARY):
+        x = MARGIN + i * (col_w + gap)
+        yy = y
+        d.text((x, yy), story["kicker"], font=F_SUBKICK, fill=RED)
+        yy += 19
+        lines = wrap(d, story["head"], F_SUBHEAD, col_w)
+        assert len(lines) <= 2, lines
+        yy = draw_lines(d, x, yy, lines, F_SUBHEAD, INK, 24)
+        yy += 3
+        body = wrap(d, story["body"], F_SUBBODY, col_w)
+        assert len(body) <= 5, body
+        yy = draw_lines(d, x, yy, body, F_SUBBODY, INK, 18)
+        yy += 3
+        d.text((x, yy), story["src"], font=F_SRC, fill=GREY)
+        yy += 16
+        sub_tops.append(yy)
+    # vertical divider between the two columns
+    mid_x = MARGIN + col_w + gap // 2
+    d.line([(mid_x, y), (mid_x, max(sub_tops))], fill=RULE, width=1)
+    y = max(sub_tops)
+    y = rule(d, y, 1)
+    y += 6
 
-    # ---- Dense grid: 3 columns x 9 rows, from y to 954 ----
-    y0, y1 = y, 954
-    cols, rows = 3, 9
-    col_w = (W - 2 * mx - 2 * 20) // cols
-    row_h = (y1 - y0) // rows
-    print(f"  dense grid: y {y0}-{y1}, row_h {row_h}")
-    for idx, (head, src) in enumerate(DENSE):
-        r, c = divmod(idx, cols)
-        x0 = mx + c * (col_w + 20)
-        yy = y0 + r * row_h
-        d.rectangle([x0, yy + 4, x0 + 4, yy + row_h - 8], fill=RED)
-        tx = x0 + 14
-        tw = col_w - 14
-        y2 = draw_fitted(d, (tx, yy + 2), head, SANS_B, 15, tw, INK,
-                         leading=1.12, max_lines=2, shrink_to=13,
-                         label=f"dense-{idx}")
-        d.text((tx, y2 + 1), "— " + src, font=font(SANS, 11), fill=GREY)
+    # ---- section header -------------------------------------------------
+    d.text((MARGIN, y), "THE DAY IN BRIEF", font=F_SECT, fill=INK)
+    right = "27 STORIES  ·  SOURCES NAMED"
+    rw = d.textlength(right, font=F_SECT)
+    d.text((W - MARGIN - rw, y), right, font=F_SECT, fill=GREY)
+    y += 18
+    d.line([(MARGIN, y), (W - MARGIN, y)], fill=INK, width=1)
+    y += 8
 
-    # ---- Ticker footer: 962-1024 ----
-    d.rectangle([0, 962, W, H], fill=NAVY)
-    lines = wrap(d, TICKER, font(SANS_B, 15), W - 2 * mx)
-    print(f"  ticker lines: {len(lines)}")
-    ty = 968
-    for tl in lines[:3]:
-        d.text((mx, ty), tl, font=font(SANS_B, 15), fill=(255, 214, 90))
-        ty += 19
+    # ---- dense 3x9 grid -------------------------------------------------
+    cols = 3
+    cell_gap = 18
+    cell_w = (COLW - (cols - 1) * cell_gap) // cols
+    grid_top = y
+    for row in range(9):
+        trio = DENSE[row * 3:(row + 1) * 3]
+        wrapped = []
+        row_h = 0
+        for head, src in trio:
+            lines = wrap(d, head, F_CELL, cell_w)
+            assert len(lines) <= 2, (head, lines)
+            h = len(lines) * 14 + 12 + 3
+            wrapped.append((lines, src))
+            row_h = max(row_h, h)
+        for i, (lines, src) in enumerate(wrapped):
+            x = MARGIN + i * (cell_w + cell_gap)
+            yy = draw_lines(d, x, y, lines, F_CELL, INK, 14)
+            d.text((x, yy), src, font=F_CELLSRC, fill=GREY)
+        y += row_h + 4
+        if row < 8:
+            d.line([(MARGIN, y - 3), (W - MARGIN, y - 3)], fill=LIGHT, width=1)
+    grid_bottom = y
+    print("grid: top", grid_top, "bottom", grid_bottom)
+    assert grid_bottom <= H - BAND_H - 8, grid_bottom
 
-    img.save(out_path, "PNG", optimize=True)
-    print(out_path, img.size)
+    # ---- ticker band ----------------------------------------------------
+    band_y = H - BAND_H
+    d.rectangle([(0, band_y), (W, H)], fill=NAVY)
+    tag = "LATEST"
+    tw = d.textlength(tag, font=F_TAG)
+    tag_x, tag_y = 18, band_y + (BAND_H - 26) // 2
+    d.rectangle([(tag_x, tag_y), (tag_x + tw + 16, tag_y + 26)], fill=RED)
+    d.text((tag_x + 8, tag_y + 5), tag, font=F_TAG, fill=(255, 255, 255))
+    tx = tag_x + tw + 16 + 14
+    tlines = wrap(d, "  •  ".join(TICKER), F_TICK, W - MARGIN - tx)
+    assert len(tlines) <= 4, tlines
+    ty = band_y + (BAND_H - len(tlines) * 17) // 2
+    draw_lines(d, tx, ty, tlines, F_TICK, (235, 235, 230), 17)
+
+    img.save(OUT, format="PNG")
+    size = os.path.getsize(OUT)
+    digest = hashlib.sha256(open(OUT, "rb").read()).hexdigest()
+    print("saved", OUT, size, "bytes")
+    print("sha256", digest)
+    print("size ok (<1MiB):", size < 1048576)
+    return size, digest
 
 
 if __name__ == "__main__":
-    render(sys.argv[1])
+    build()
